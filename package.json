@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "vcards-js": "^2.10.0",
+    "vcf": "^2.1.0"
+  }
+}
