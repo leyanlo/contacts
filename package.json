@@ -1,6 +1,26 @@
 {
+  "name": "contacts",
+  "version": "1.0.0",
+  "description": "Contact utility scripts",
+  "main": "index.ts",
   "dependencies": {
     "vcards-js": "^2.10.0",
-    "vcf": "^2.1.0"
-  }
+    "vcf": "^2.1.0",
+    "yargs": "^15.4.1"
+  },
+  "devDependencies": {
+    "prettier": "2.0.5"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leyanlo/contacts.git"
+  },
+  "keywords": [
+    "contacts"
+  ],
+  "author": "Leyan Lo",
+  "license": "ISC"
 }
