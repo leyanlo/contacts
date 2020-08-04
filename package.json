@@ -4,7 +4,6 @@
   "description": "Contact utility scripts",
   "main": "index.ts",
   "dependencies": {
-    "vcards-js": "^2.10.0",
     "vcf": "^2.1.0",
     "yargs": "^15.4.1"
   },
