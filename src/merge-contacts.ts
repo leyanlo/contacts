@@ -21,4 +21,7 @@ const cards = argv._.reduce((acc, path) => {
 }, []);
 
 console.log(`Writing ${cards.length} contacts to ${argv.output}.`);
-fs.writeFileSync(argv.output, cards.toString());
+fs.writeFileSync(
+  argv.output,
+  cards.map((contact) => contact.toString()).join("\n")
+);
