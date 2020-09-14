@@ -19,7 +19,7 @@ const contacts = vCard.parse(fileBuffer);
 console.log(`Read ${contacts.length} contacts from ${path}.`);
 
 const filteredContacts = contacts.filter(
-  (contact) => contact.data.email && contact.data.tel
+  (contact) => contact.data.email || contact.data.tel
 );
 
 console.log(`Writing ${filteredContacts.length} contacts to ${argv.output}.`);
