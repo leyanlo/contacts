@@ -14,7 +14,8 @@
     "prettier": "2.0.5"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "merge-contacts": "ts-node scripts/merge-contacts.ts",
+    "prune-contacts": "ts-node scripts/prune-contacts.ts"
   },
   "repository": {
     "type": "git",
