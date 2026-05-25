@@ -1,6 +1,8 @@
-import vCard = require("vcf");
-import fs = require("fs");
-import yargs = require("yargs");
+#!/usr/bin/env node
+
+const fs = require("fs");
+const vCard = require("vcf");
+const yargs = require("yargs");
 
 const argv = yargs
   .usage("$0 contacts1.vcf contacts2.vcf ...")
@@ -10,6 +12,7 @@ const argv = yargs
     description: "output filename",
     default: "merged-contacts.vcf",
   })
+  .demandCommand(1, "Provide at least one .vcf file.")
   .help()
   .alias("help", "h").argv;
 

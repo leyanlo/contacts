@@ -6,3 +6,5 @@ __pycache__/
 
 contacts_cleanup_screenshot.png
 messages_text_histogram/
+contacts_backups/
+node_modules/

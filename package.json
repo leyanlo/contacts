@@ -2,20 +2,17 @@
   "name": "contacts",
   "version": "1.0.0",
   "description": "Contact utility scripts",
-  "main": "index.ts",
+  "main": "index.js",
   "dependencies": {
     "vcf": "^2.1.0",
     "yargs": "^15.4.1"
   },
   "devDependencies": {
-    "@types/node": "^14.0.27",
-    "@types/vcf": "^2.0.2",
-    "@types/yargs": "^15.0.5",
     "prettier": "2.0.5"
   },
   "scripts": {
-    "merge-contacts": "ts-node scripts/merge-contacts.ts",
-    "prune-contacts": "ts-node scripts/prune-contacts.ts"
+    "merge-contacts": "node scripts/merge-contacts.js",
+    "prune-contacts": "node scripts/prune-contacts.js"
   },
   "repository": {
     "type": "git",

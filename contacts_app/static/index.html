@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contacts Cleanup</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f4;
+      --panel: #ffffff;
+      --text: #202124;
+      --muted: #64665f;
+      --line: #deded8;
+      --accent: #0b6bcb;
+      --danger: #b42318;
+      --ok: #287947;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      padding: 18px 24px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfbf8;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(130px, max-content)) max-content;
+      gap: 10px;
+      align-items: center;
+    }
+    input, select, button {
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: white;
+      color: var(--text);
+      padding: 0 10px;
+      font: inherit;
+    }
+    button {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      cursor: pointer;
+    }
+    main { padding: 18px 24px 28px; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-width: 0;
+    }
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1.1;
+      margin-bottom: 4px;
+    }
+    .metric span { color: var(--muted); font-size: 12px; }
+    .warnings {
+      display: none;
+      border: 1px solid #f2b8b5;
+      background: #fff4f2;
+      color: var(--danger);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+    }
+    .selectionbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+    }
+    .selectionbar button {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
+    .selectionbar .secondary {
+      background: white;
+      border-color: var(--line);
+      color: var(--text);
+    }
+    .selectionbar .merge {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    .selectionbar .prune {
+      background: #875c00;
+      border-color: #875c00;
+      color: white;
+    }
+    .selectionbar select {
+      width: 160px;
+      margin-right: 6px;
+    }
+    .dry-run {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-right: 8px;
+      color: var(--muted);
+      user-select: none;
+    }
+    .dry-run input {
+      height: auto;
+      margin: 0;
+    }
+    .selectionbar button:disabled {
+      background: #deded8;
+      border-color: #deded8;
+      color: #7a7c75;
+      cursor: default;
+    }
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      overflow: auto;
+      max-height: calc(100vh - 220px);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1120px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: right;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #efefea;
+      color: #3c3d39;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2),
+    th:nth-child(3), td:nth-child(3),
+    th:nth-child(5), td:nth-child(5) {
+      text-align: left;
+    }
+    tbody tr[data-id] {
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    tbody tr:hover { background: #f8fbff; }
+    tbody tr.selected { background: #e9f2ff; }
+    .select-col {
+      width: 42px;
+      text-align: center;
+    }
+    .select-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: transparent;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    tr.selected .select-mark {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+    .name {
+      font-weight: 600;
+      max-width: 240px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .handles {
+      color: var(--muted);
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #eeeeea;
+      color: #4b4d47;
+    }
+    .badge.never { background: #ffe9e6; color: var(--danger); }
+    .badge.texted { background: #e6f4ea; color: var(--ok); }
+    .muted { color: var(--muted); }
+    .loading { color: var(--muted); padding: 18px; }
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(32, 33, 36, 0.36);
+      padding: 24px;
+    }
+    .modal[hidden] { display: none; }
+    .modal-panel {
+      width: min(900px, 100%);
+      max-height: min(760px, calc(100vh - 48px));
+      overflow: auto;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+    }
+    .modal-head, .modal-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .modal-actions {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      justify-content: flex-end;
+    }
+    .modal-head h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    .modal-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      padding: 16px;
+    }
+    .modal-section h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+    .option-list {
+      display: grid;
+      gap: 8px;
+    }
+    .option-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+    }
+    .option-row input {
+      height: auto;
+      margin-top: 3px;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .field-row select {
+      width: 100%;
+    }
+    .modal-actions .secondary {
+      background: white;
+      border-color: var(--line);
+      color: var(--text);
+    }
+    @media (max-width: 900px) {
+      header { position: static; }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .toolbar input { grid-column: 1 / -1; }
+      .summary { grid-template-columns: 1fr 1fr; }
+      .table-wrap { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Contacts Cleanup</h1>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search names, numbers, emails">
+      <select id="account">
+        <option value="all">All Contacts</option>
+      </select>
+      <select id="view">
+        <option value="all">All contacts</option>
+        <option value="never">Never texted</option>
+        <option value="texted">Texted before</option>
+        <option value="nophone">No phone number</option>
+        <option value="noemail">No email</option>
+        <option value="nohandles">No phone/email</option>
+        <option value="placeholders">Empty placeholders</option>
+      </select>
+      <select id="years">
+        <option value="10">10 years</option>
+        <option value="5">5 years</option>
+        <option value="2">2 years</option>
+        <option value="1">1 year</option>
+        <option value="all">All local Messages</option>
+      </select>
+      <select id="sort">
+        <option value="candidate">Removal candidates</option>
+        <option value="name">Name</option>
+        <option value="lastSent">Oldest last text</option>
+        <option value="sentTotal">Fewest texts</option>
+      </select>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+  <main>
+    <section class="summary" id="summary"></section>
+    <section class="warnings" id="warnings"></section>
+    <section class="selectionbar">
+      <span id="selectionCount">0 selected</span>
+      <div>
+        <label class="dry-run"><input id="dryRun" type="checkbox" checked> Dry Run</label>
+        <button id="clearSelection" class="secondary" type="button" disabled>Clear Selection</button>
+        <button id="mergeSelected" class="merge" type="button" disabled>Merge Selected</button>
+        <select id="pruneMode" aria-label="Prune criterion">
+          <option value="nohandles">No phone/email</option>
+          <option value="nophone">No phone</option>
+          <option value="noemail">No email</option>
+        </select>
+        <button id="pruneNoHandles" class="prune" type="button">Prune</button>
+        <button id="deleteSelected" type="button" disabled>Delete Selected</button>
+      </div>
+    </section>
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="select-col"></th>
+            <th data-sort="name">Name</th>
+            <th>Account</th>
+            <th>Reason</th>
+            <th>Handles</th>
+            <th data-sort="keepScore">Keep score</th>
+            <th data-sort="sentTotal">Sent</th>
+            <th>Direct</th>
+            <th>Group</th>
+            <th data-sort="daysSinceSent">Days since sent</th>
+            <th>Last sent</th>
+            <th>Received</th>
+            <th>Shared</th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr><td class="loading" colspan="13">Loading Contacts and Messages metadata...</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <section id="mergeModal" class="modal" hidden>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="mergeTitle">
+      <div class="modal-head">
+        <h2 id="mergeTitle">Merge Contacts</h2>
+        <button id="closeMerge" class="secondary" type="button">Close</button>
+      </div>
+      <div id="mergeBody" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="cancelMerge" class="secondary" type="button">Cancel</button>
+        <button id="confirmMerge" type="button">Merge</button>
+      </div>
+    </div>
+  </section>
+  <script>
+    const state = {
+      contacts: [],
+      payload: null,
+      selectedIds: new Set(),
+      visibleRows: [],
+      lastSelectedIndex: null,
+      sortKey: 'candidate',
+      sortDirection: 1,
+    };
+
+    const el = {
+      search: document.querySelector('#search'),
+      account: document.querySelector('#account'),
+      view: document.querySelector('#view'),
+      years: document.querySelector('#years'),
+      sort: document.querySelector('#sort'),
+      refresh: document.querySelector('#refresh'),
+      dryRun: document.querySelector('#dryRun'),
+      clearSelection: document.querySelector('#clearSelection'),
+      mergeSelected: document.querySelector('#mergeSelected'),
+      pruneMode: document.querySelector('#pruneMode'),
+      pruneNoHandles: document.querySelector('#pruneNoHandles'),
+      deleteSelected: document.querySelector('#deleteSelected'),
+      selectionCount: document.querySelector('#selectionCount'),
+      summary: document.querySelector('#summary'),
+      warnings: document.querySelector('#warnings'),
+      rows: document.querySelector('#rows'),
+      mergeModal: document.querySelector('#mergeModal'),
+      mergeBody: document.querySelector('#mergeBody'),
+      closeMerge: document.querySelector('#closeMerge'),
+      cancelMerge: document.querySelector('#cancelMerge'),
+      confirmMerge: document.querySelector('#confirmMerge'),
+    };
+
+    function fmt(value) {
+      return Number(value || 0).toLocaleString();
+    }
+
+    function metricValue(value) {
+      return value == null ? 'Unknown' : fmt(value);
+    }
+
+    function reason(row) {
+      if (!row.messagesAvailable) return '<span class="badge never">Messages unavailable</span>';
+      if (!row.hasTextHandle) return '<span class="badge never">No phone/email</span>';
+      if (!row.hasPhone) return '<span class="badge never">No phone</span>';
+      if (!row.hasEmail) return '<span class="badge never">No email</span>';
+      if (row.neverTexted) return '<span class="badge never">Never texted</span>';
+      return '<span class="badge texted">Low frecency</span>';
+    }
+
+    function handles(row) {
+      return [...row.phones, ...row.emails].map(escapeHtml).join(', ') || '<span class="muted">None</span>';
+    }
+
+    function renderAccountOptions(options) {
+      const current = el.account.value || 'all';
+      el.account.innerHTML = (options || [{ key: 'all', name: 'All Contacts', count: 0 }]).map(option => `
+        <option value="${escapeHtml(option.key)}">${escapeHtml(option.name)} (${fmt(option.count)})</option>
+      `).join('');
+      el.account.value = [...el.account.options].some(option => option.value === current) ? current : 'all';
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[char]));
+    }
+
+    function candidateCompare(a, b) {
+      if (!a.messagesAvailable || !b.messagesAvailable) {
+        return a.name.localeCompare(b.name);
+      }
+      return (
+        Number(a.neverTexted) === Number(b.neverTexted)
+          ? a.keepScore - b.keepScore || a.sentTotal - b.sentTotal || a.name.localeCompare(b.name)
+          : Number(b.neverTexted) - Number(a.neverTexted)
+      );
+    }
+
+    function sortedRows(rows) {
+      const key = state.sortKey;
+      const direction = state.sortDirection;
+      return [...rows].sort((a, b) => {
+        if (key === 'candidate') return candidateCompare(a, b);
+        if (key === 'name') return direction * a.name.localeCompare(b.name);
+        if (key === 'lastSent') return direction * ((a.daysSinceSent ?? 999999) - (b.daysSinceSent ?? 999999));
+        const av = a[key] ?? 0;
+        const bv = b[key] ?? 0;
+        return direction * (av - bv);
+      });
+    }
+
+    function filteredRows() {
+      const query = el.search.value.trim().toLowerCase();
+      const account = el.account.value;
+      const view = el.view.value;
+      return state.contacts.filter(row => {
+        if (account !== 'all' && row.accountKey !== account) return false;
+        if (!row.messagesAvailable && (view === 'never' || view === 'texted')) return false;
+        if (view !== 'placeholders' && row.isPlaceholder) return false;
+        if (view === 'never' && !row.neverTexted) return false;
+        if (view === 'texted' && row.neverTexted) return false;
+        if (view === 'nophone' && row.hasPhone) return false;
+        if (view === 'noemail' && row.hasEmail) return false;
+        if (view === 'nohandles' && row.hasTextHandle) return false;
+        if (view === 'placeholders' && !row.isPlaceholder) return false;
+        if (!query) return true;
+        const haystack = [row.name, row.accountName, ...row.phones, ...row.emails, ...row.matchedHandles].join(' ').toLowerCase();
+        return haystack.includes(query);
+      });
+    }
+
+    function renderSummary(payload, visibleCount) {
+      const summary = payload.summary || {};
+      el.summary.innerHTML = [
+        ['Contacts', summary.contacts],
+        ['Visible', visibleCount],
+        ['Never texted', summary.neverTexted],
+        ['Texted before', summary.textedAtLeastOnce],
+        ['No phone #', summary.withoutPhone],
+        ['No email', summary.withoutEmail],
+        ['Hidden empty', summary.placeholders],
+      ].map(([label, value]) => `
+        <div class="metric">
+          <strong>${metricValue(value)}</strong>
+          <span>${label}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderWarnings(warnings) {
+      if (!warnings || warnings.length === 0) {
+        el.warnings.style.display = 'none';
+        el.warnings.innerHTML = '';
+        return;
+      }
+      el.warnings.style.display = 'block';
+      el.warnings.innerHTML = warnings.map(escapeHtml).join('<br>');
+    }
+
+    function renderRows(payload) {
+      const rows = sortedRows(filteredRows());
+      state.visibleRows = rows;
+      renderSummary(payload, rows.length);
+      if (!rows.length) {
+        el.rows.innerHTML = '<tr><td class="loading" colspan="13">No contacts match the current filters.</td></tr>';
+        updateSelectionState();
+        return;
+      }
+      el.rows.innerHTML = rows.map((row, index) => `
+        <tr data-id="${escapeHtml(row.id)}" data-index="${index}" class="${state.selectedIds.has(row.id) ? 'selected' : ''}">
+          <td class="select-col"><span class="select-mark">✓</span></td>
+          <td class="name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.accountName)}</td>
+          <td>${reason(row)}</td>
+          <td class="handles" title="${escapeHtml([...row.phones, ...row.emails].join(', '))}">${handles(row)}</td>
+          <td>${row.messagesAvailable ? row.keepScore.toFixed(4) : '<span class="muted">Unknown</span>'}</td>
+          <td>${fmt(row.sentTotal)}</td>
+          <td>${fmt(row.sentDirect)}</td>
+          <td>${fmt(row.sentGroup)}</td>
+          <td>${row.daysSinceSent == null ? '<span class="muted">Never</span>' : fmt(Math.round(row.daysSinceSent))}</td>
+          <td>${row.lastSent ? escapeHtml(row.lastSent) : '<span class="muted">Never</span>'}</td>
+          <td>${fmt(row.receivedFromThemTotal)}</td>
+          <td>${fmt(row.sharedTotal)}</td>
+        </tr>
+      `).join('');
+      updateSelectionState();
+    }
+
+    function updateSelectionState() {
+      const currentIds = new Set(state.contacts.map(row => row.id));
+      for (const id of [...state.selectedIds]) {
+        if (!currentIds.has(id)) state.selectedIds.delete(id);
+      }
+      const count = state.selectedIds.size;
+      const accountKeys = selectedAccountKeys();
+      el.selectionCount.textContent = `${fmt(count)} selected`;
+      if (count >= 2 && accountKeys.length > 1) {
+        el.selectionCount.textContent += ' · merge requires one account';
+      }
+      el.clearSelection.disabled = count === 0;
+      el.mergeSelected.disabled = !canMergeSelection();
+      el.deleteSelected.disabled = count === 0;
+    }
+
+    function selectedRows() {
+      return state.contacts.filter(row => state.selectedIds.has(row.id));
+    }
+
+    function selectedAccountKeys() {
+      return [...new Set(selectedRows().map(row => row.accountKey))];
+    }
+
+    function canMergeSelection() {
+      const rows = selectedRows();
+      return rows.length >= 2 && selectedAccountKeys().length === 1;
+    }
+
+    function selectRow(row, event) {
+      const index = Number(row.dataset.index);
+      const id = row.dataset.id;
+      if (!id || Number.isNaN(index)) return;
+
+      if (event.shiftKey && state.lastSelectedIndex != null) {
+        const start = Math.min(state.lastSelectedIndex, index);
+        const end = Math.max(state.lastSelectedIndex, index);
+        for (let i = start; i <= end; i += 1) {
+          const visible = state.visibleRows[i];
+          if (visible) state.selectedIds.add(visible.id);
+        }
+      } else {
+        if (state.selectedIds.has(id)) state.selectedIds.delete(id);
+        else state.selectedIds.add(id);
+        state.lastSelectedIndex = index;
+      }
+      renderRows(state.payload || { summary: window.lastSummary || {} });
+    }
+
+    async function deleteSelectedContacts() {
+      const rows = selectedRows();
+      const identifiers = rows.map(row => row.contactIdentifier).filter(Boolean);
+      const skipped = rows.length - identifiers.length;
+      if (!identifiers.length) {
+        alert('None of the selected rows have a Contacts identifier that can be deleted.');
+        return;
+      }
+      const warning = skipped
+        ? `\n\n${skipped} selected row(s) do not have a deletable Contacts identifier and will be skipped.`
+        : '';
+      const dryRun = el.dryRun.checked;
+      const actionText = dryRun ? 'Dry run delete' : 'Delete';
+      const consequence = dryRun ? 'No Contacts data will be changed.' : 'This changes your Contacts data.';
+      if (!confirm(`${actionText} ${identifiers.length} selected contact(s)?${warning}\n\n${consequence}`)) {
+        return;
+      }
+      el.deleteSelected.disabled = true;
+      el.selectionCount.textContent = dryRun ? 'Checking delete...' : 'Deleting...';
+      const response = await fetch('/api/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifiers, contacts: rows, dryRun }),
+      });
+      const result = await response.json();
+      const errors = result.errors && result.errors.length ? `\n\nErrors:\n${result.errors.join('\n')}` : '';
+      const missing = result.missing && result.missing.length ? `\n\nMissing/skipped: ${result.missing.length}` : '';
+      const stillPresent = result.stillPresent && result.stillPresent.length ? `\n\nStill present after delete: ${result.stillPresent.length}` : '';
+      const backup = result.backupPath ? `\nBackup: ${result.backupPath}` : '';
+      const dryRunSummary = result.dryRun ? `Dry run: would delete ${result.wouldDelete || 0} contact(s).` : `Deleted ${result.deleted || 0} of ${result.requested || identifiers.length} requested contact(s).`;
+      alert(`${dryRunSummary}${missing}${stillPresent}${backup}${errors}`);
+      state.selectedIds.clear();
+      await load(true);
+    }
+
+    function pruneCriterion() {
+      const mode = el.pruneMode.value;
+      if (mode === 'nophone') {
+        return {
+          label: 'no phone',
+          emptyMessage: 'No contacts without phone numbers were found for the current account filter.',
+          destructiveText: 'This deletes contacts that do not have a phone number.',
+          matches: row => !row.hasPhone,
+        };
+      }
+      if (mode === 'noemail') {
+        return {
+          label: 'no email',
+          emptyMessage: 'No contacts without email addresses were found for the current account filter.',
+          destructiveText: 'This deletes contacts that do not have an email address.',
+          matches: row => !row.hasEmail,
+        };
+      }
+      return {
+        label: 'no phone/email',
+        emptyMessage: 'No contacts without phone/email were found for the current account filter.',
+        destructiveText: 'This deletes contacts with neither phone nor email.',
+        matches: row => !row.hasTextHandle,
+      };
+    }
+
+    function pruneCandidates() {
+      const account = el.account.value;
+      const criterion = pruneCriterion();
+      return state.contacts.filter(row => {
+        if (account !== 'all' && row.accountKey !== account) return false;
+        return criterion.matches(row) && !row.isPlaceholder;
+      });
+    }
+
+    async function pruneNoPhoneEmailContacts() {
+      const criterion = pruneCriterion();
+      const rows = pruneCandidates();
+      const identifiers = rows.map(row => row.contactIdentifier).filter(Boolean);
+      if (!identifiers.length) {
+        alert(criterion.emptyMessage);
+        return;
+      }
+      const dryRun = el.dryRun.checked;
+      const accountLabel = el.account.options[el.account.selectedIndex]?.textContent || 'current account';
+      const actionText = dryRun ? 'Dry run prune' : 'Prune';
+      const consequence = dryRun ? 'No Contacts data will be changed.' : criterion.destructiveText;
+      if (!confirm(`${actionText} ${identifiers.length} contact(s) with ${criterion.label} in ${accountLabel}?\n\n${consequence}`)) {
+        return;
+      }
+      el.pruneNoHandles.disabled = true;
+      el.selectionCount.textContent = dryRun ? 'Checking prune...' : 'Pruning...';
+      const response = await fetch('/api/prune', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifiers, contacts: rows, dryRun }),
+      });
+      const result = await response.json();
+      const errors = result.errors && result.errors.length ? `\n\nErrors:\n${result.errors.join('\n')}` : '';
+      const missing = result.missing && result.missing.length ? `\n\nMissing/skipped: ${result.missing.length}` : '';
+      const stillPresent = result.stillPresent && result.stillPresent.length ? `\n\nStill present after prune: ${result.stillPresent.length}` : '';
+      const backup = result.backupPath ? `\nBackup: ${result.backupPath}` : '';
+      const summary = result.dryRun ? `Dry run: would prune ${result.wouldDelete || 0} contact(s).` : `Pruned ${result.deleted || 0} of ${result.requested || identifiers.length} contact(s).`;
+      alert(`${summary}${missing}${stillPresent}${backup}${errors}`);
+      el.pruneNoHandles.disabled = false;
+      await load(true);
+    }
+
+    function uniqueValues(rows, key) {
+      return [...new Set(rows.map(row => (row[key] || '').trim()).filter(Boolean))];
+    }
+
+    function uniqueListValues(rows, key) {
+      return [...new Set(rows.flatMap(row => row[key] || []).map(value => String(value).trim()).filter(Boolean))];
+    }
+
+    function optionSelect(name, label, values, primaryValue) {
+      const ordered = ['', ...values.filter(value => value !== '')];
+      if (primaryValue && !ordered.includes(primaryValue)) ordered.push(primaryValue);
+      return `
+        <div class="field-row">
+          <label for="merge-${name}">${escapeHtml(label)}</label>
+          <select id="merge-${name}" data-field="${escapeHtml(name)}">
+            ${ordered.map(value => `
+              <option value="${escapeHtml(value)}" ${value === (primaryValue || '') ? 'selected' : ''}>
+                ${value ? escapeHtml(value) : 'Blank'}
+              </option>
+            `).join('')}
+          </select>
+        </div>
+      `;
+    }
+
+    function checkboxList(name, values) {
+      if (!values.length) return '<p class="muted">None</p>';
+      return `<div class="option-list">
+        ${values.map(value => `
+          <label class="option-row">
+            <input type="checkbox" data-merge-list="${escapeHtml(name)}" value="${escapeHtml(value)}" checked>
+            <span>${escapeHtml(value)}</span>
+          </label>
+        `).join('')}
+      </div>`;
+    }
+
+    function renderMergeModal() {
+      const rows = selectedRows();
+      if (rows.length < 2) {
+        alert('Select at least two contacts to merge.');
+        return;
+      }
+      if (selectedAccountKeys().length !== 1) {
+        alert('Merge only supports contacts from the same account. Filter to iCloud, Gmail, or Other, then select contacts within that account.');
+        return;
+      }
+      const primary = rows[0];
+      const fields = [
+        ['firstName', 'First name'],
+        ['lastName', 'Last name'],
+        ['organization', 'Organization'],
+        ['nickname', 'Nickname'],
+      ];
+      el.mergeBody.innerHTML = `
+        <div class="modal-section">
+          <h3>Primary Contact</h3>
+          <div class="option-list">
+            ${rows.map((row, index) => `
+              <label class="option-row">
+                <input type="radio" name="merge-primary" value="${escapeHtml(row.contactIdentifier)}" ${index === 0 ? 'checked' : ''}>
+                <span>
+                  <strong>${escapeHtml(row.name)}</strong><br>
+                  <span class="muted">${escapeHtml(row.accountName)} · ${escapeHtml([...row.phones, ...row.emails].join(', ') || 'No phone/email')}</span>
+                </span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        <div class="modal-section">
+          <h3>Field Values</h3>
+          ${fields.map(([key, label]) => optionSelect(key, label, uniqueValues(rows, key), primary[key] || '')).join('')}
+        </div>
+        <div class="modal-section">
+          <h3>Phone Numbers To Keep</h3>
+          ${checkboxList('phones', uniqueListValues(rows, 'phones'))}
+        </div>
+        <div class="modal-section">
+          <h3>Email Addresses To Keep</h3>
+          ${checkboxList('emails', uniqueListValues(rows, 'emails'))}
+        </div>
+      `;
+      el.mergeModal.hidden = false;
+    }
+
+    function closeMergeModal() {
+      el.mergeModal.hidden = true;
+      el.mergeBody.innerHTML = '';
+    }
+
+    async function mergeSelectedContacts() {
+      const rows = selectedRows();
+      const accountKeys = selectedAccountKeys();
+      if (accountKeys.length !== 1) {
+        alert('Merge only supports contacts from the same account.');
+        return;
+      }
+      const primaryInput = el.mergeBody.querySelector('input[name="merge-primary"]:checked');
+      const primaryIdentifier = primaryInput ? primaryInput.value : '';
+      if (!primaryIdentifier) {
+        alert('Choose a primary contact.');
+        return;
+      }
+      const fields = {};
+      el.mergeBody.querySelectorAll('select[data-field]').forEach(select => {
+        fields[select.dataset.field] = select.value;
+      });
+      const phones = [...el.mergeBody.querySelectorAll('input[data-merge-list="phones"]:checked')].map(input => input.value);
+      const emails = [...el.mergeBody.querySelectorAll('input[data-merge-list="emails"]:checked')].map(input => input.value);
+      const deleteIdentifiers = rows
+        .map(row => row.contactIdentifier)
+        .filter(identifier => identifier && identifier !== primaryIdentifier);
+      const dryRun = el.dryRun.checked;
+      const actionText = dryRun ? 'Dry run merge' : 'Merge';
+      const consequence = dryRun ? 'No Contacts data will be changed.' : 'Merged-away contacts will be deleted.';
+      if (!confirm(`${actionText} ${deleteIdentifiers.length + 1} selected contacts into one primary contact?\n\n${consequence}`)) {
+        return;
+      }
+      el.confirmMerge.disabled = true;
+      el.confirmMerge.textContent = dryRun ? 'Checking...' : 'Merging...';
+      const response = await fetch('/api/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryIdentifier, deleteIdentifiers, fields, phones, emails, accountKey: accountKeys[0], contacts: rows, dryRun }),
+      });
+      const result = await response.json();
+      const errors = result.errors && result.errors.length ? `\n\nErrors:\n${result.errors.join('\n')}` : '';
+      const stillPresent = result.stillPresent && result.stillPresent.length ? `\n\nStill present after merge: ${result.stillPresent.length}` : '';
+      const backup = result.backupPath ? `\nBackup: ${result.backupPath}` : '';
+      const summary = result.dryRun
+        ? `Dry run: would update primary contact and delete ${result.wouldDelete || 0} merged-away contact(s).`
+        : `Updated primary contact: ${result.updated ? 'yes' : 'no'}\nDeleted merged-away contacts: ${result.deleted || 0}`;
+      alert(`${summary}${stillPresent}${backup}${errors}`);
+      el.confirmMerge.disabled = false;
+      el.confirmMerge.textContent = 'Merge';
+      closeMergeModal();
+      state.selectedIds.clear();
+      await load(true);
+    }
+
+    async function load(refresh = false) {
+      el.rows.innerHTML = '<tr><td class="loading" colspan="13">Loading Contacts and Messages metadata...</td></tr>';
+      const years = el.years.value;
+      const response = await fetch(`/api/contacts?years=${encodeURIComponent(years)}${refresh ? '&refresh=1' : ''}`);
+      const payload = await response.json();
+      state.payload = payload;
+      state.contacts = payload.contacts || [];
+      renderAccountOptions(payload.accountOptions || []);
+      renderWarnings(payload.warnings || []);
+      renderRows(payload);
+    }
+
+    el.rows.addEventListener('mousedown', event => {
+      if (event.shiftKey && event.target.closest('tr[data-id]')) {
+        event.preventDefault();
+      }
+    });
+    el.rows.addEventListener('click', event => {
+      const row = event.target.closest('tr[data-id]');
+      if (row) {
+        event.preventDefault();
+        selectRow(row, event);
+      }
+    });
+    el.search.addEventListener('input', () => renderRows(state.payload || { summary: window.lastSummary || {} }));
+    el.account.addEventListener('change', () => {
+      state.selectedIds.clear();
+      renderRows(state.payload || { summary: window.lastSummary || {} });
+    });
+    el.view.addEventListener('change', () => renderRows(state.payload || { summary: window.lastSummary || {} }));
+    el.sort.addEventListener('change', () => {
+      state.sortKey = el.sort.value;
+      state.sortDirection = state.sortKey === 'name' ? 1 : 1;
+      renderRows(state.payload || { summary: window.lastSummary || {} });
+    });
+    el.years.addEventListener('change', () => load(true));
+    el.refresh.addEventListener('click', () => load(true));
+    el.clearSelection.addEventListener('click', () => {
+      state.selectedIds.clear();
+      state.lastSelectedIndex = null;
+      renderRows(state.payload || { summary: window.lastSummary || {} });
+    });
+    el.mergeSelected.addEventListener('click', renderMergeModal);
+    el.pruneNoHandles.addEventListener('click', () => {
+      pruneNoPhoneEmailContacts().catch(error => {
+        el.pruneNoHandles.disabled = false;
+        alert(error.message);
+      });
+    });
+    el.closeMerge.addEventListener('click', closeMergeModal);
+    el.cancelMerge.addEventListener('click', closeMergeModal);
+    el.confirmMerge.addEventListener('click', () => {
+      mergeSelectedContacts().catch(error => {
+        el.confirmMerge.disabled = false;
+        el.confirmMerge.textContent = 'Merge';
+        alert(error.message);
+      });
+    });
+    el.deleteSelected.addEventListener('click', () => {
+      deleteSelectedContacts().catch(error => alert(error.message));
+    });
+
+    document.querySelectorAll('th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        if (state.sortKey === key) state.sortDirection *= -1;
+        else {
+          state.sortKey = key;
+          state.sortDirection = key === 'name' ? 1 : 1;
+        }
+        el.sort.value = ['candidate', 'name', 'lastSent', 'sentTotal'].includes(key) ? key : el.sort.value;
+        renderRows(state.payload || { summary: window.lastSummary || {} });
+      });
+    });
+
+    const originalRenderSummary = renderSummary;
+    renderSummary = function(payload, visibleCount) {
+      window.lastSummary = payload.summary || window.lastSummary || {};
+      originalRenderSummary(payload, visibleCount);
+    };
+
+    load(false).catch(error => {
+      el.rows.innerHTML = `<tr><td class="loading" colspan="13">${escapeHtml(error.message)}</td></tr>`;
+    });
+  </script>
+</body>
+</html>
