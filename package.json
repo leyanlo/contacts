@@ -4,6 +4,7 @@
   "description": "Contact utility scripts",
   "main": "index.js",
   "dependencies": {
+    "@tanstack/react-virtual": "^3.13.26",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

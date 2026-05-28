@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Check, CheckSquare, GitMerge, RefreshCw, Scissors, Search, Square, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Check, CheckSquare, GitMerge, Scissors, Search, Square, Trash2, X } from "lucide-react";
 
 const SORT_OPTIONS = [
   ["candidate", "Removal candidates"],
@@ -31,6 +32,8 @@ const PRUNE_OPTIONS = [
   ["nophone", "No phone"],
   ["noemail", "No email"],
 ];
+
+const CONTACT_TABLE_COLUMNS = "40px minmax(180px,240px) minmax(110px,140px) minmax(130px,160px) minmax(220px,1fr) repeat(8,minmax(80px,110px))";
 
 function fmt(value) {
   return Number(value || 0).toLocaleString();
@@ -103,24 +106,19 @@ function resultMessage(kind, result, fallbackCount) {
   const stillPresent = result.stillPresent?.length ? `\n\nStill present after ${kind}: ${result.stillPresent.length}` : "";
   const backup = result.backupPath ? `\nBackup: ${result.backupPath}` : "";
   if (kind === "merge") {
-    const summary = result.dryRun
-      ? `Dry run: would update primary contact and delete ${result.wouldDelete || 0} merged-away contact(s).`
-      : `Updated primary contact: ${result.updated ? "yes" : "no"}\nDeleted merged-away contacts: ${result.deleted || 0}`;
+    const summary = `Updated primary contact: ${result.updated ? "yes" : "no"}\nDeleted merged-away contacts: ${result.deleted || 0}`;
     return `${summary}${stillPresent}${backup}${errors}`;
   }
-  const verb = kind === "prune" ? "prune" : "delete";
   const past = kind === "prune" ? "Pruned" : "Deleted";
-  const summary = result.dryRun
-    ? `Dry run: would ${verb} ${result.wouldDelete || 0} contact(s).`
-    : `${past} ${result.deleted || 0} of ${result.requested || fallbackCount} contact(s).`;
+  const summary = `${past} ${result.deleted || 0} of ${result.requested || fallbackCount} contact(s).`;
   return `${summary}${missing}${stillPresent}${backup}${errors}`;
 }
 
 function Metric({ label, value }) {
   return (
-    <div className="min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2">
-      <strong className="block text-2xl leading-tight">{metricValue(value)}</strong>
-      <span className="text-xs text-stone-500">{label}</span>
+    <div className="min-w-0">
+      <strong className="block text-xl leading-tight">{metricValue(value)}</strong>
+      <span className="text-xs font-medium text-stone-500">{label}</span>
     </div>
   );
 }
@@ -144,6 +142,7 @@ function Modal({ title, children, footer, onClose, wide = false }) {
 }
 
 function App() {
+  const tableScrollRef = useRef(null);
   const [payload, setPayload] = useState({ contacts: [], summary: {}, accountOptions: [], warnings: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -154,7 +153,6 @@ function App() {
   const [sortKey, setSortKey] = useState("candidate");
   const [sortDirection, setSortDirection] = useState(1);
   const [pruneMode, setPruneMode] = useState("nohandles");
-  const [dryRun, setDryRun] = useState(true);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -212,6 +210,17 @@ function App() {
       return sortDirection * ((a[sortKey] ?? 0) - (b[sortKey] ?? 0));
     });
   }, [filteredRows, sortDirection, sortKey]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: visibleRows.length,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => 41,
+    overscan: 12,
+  });
+
+  useEffect(() => {
+    rowVirtualizer.scrollToOffset(0);
+  }, [account, search, sortDirection, sortKey, view, rowVirtualizer]);
 
   const selectedRows = useMemo(() => contacts.filter((row) => selectedIds.has(row.id)), [contacts, selectedIds]);
   const selectedAccountKeys = useMemo(() => [...new Set(selectedRows.map((row) => row.accountKey))], [selectedRows]);
@@ -271,9 +280,8 @@ function App() {
       return;
     }
     const warning = skipped ? `\n\n${skipped} selected row(s) do not have a deletable Contacts identifier and will be skipped.` : "";
-    const consequence = dryRun ? "No Contacts data will be changed." : "This changes your Contacts data.";
-    if (!confirm(`${dryRun ? "Dry run delete" : "Delete"} ${identifiers.length} selected contact(s)?${warning}\n\n${consequence}`)) return;
-    const result = await postAction("delete", { identifiers, contacts: selectedRows, dryRun });
+    if (!confirm(`Delete ${identifiers.length} selected contact(s)?${warning}\n\nThis changes your Contacts data.`)) return;
+    const result = await postAction("delete", { identifiers, contacts: selectedRows });
     alert(resultMessage("delete", result, identifiers.length));
     clearSelection();
     await load(true);
@@ -315,8 +323,7 @@ function App() {
       alert("Choose at least one merged-away contact.");
       return;
     }
-    const consequence = dryRun ? "No Contacts data will be changed." : "Merged-away contacts will be deleted.";
-    if (!confirm(`${dryRun ? "Dry run merge" : "Merge"} ${deleteIdentifiers.length + 1} selected contacts into one primary contact?\n\n${consequence}`)) return;
+    if (!confirm(`Merge ${deleteIdentifiers.length + 1} selected contacts into one primary contact?\n\nMerged-away contacts will be deleted.`)) return;
     const result = await postAction("merge", {
       primaryIdentifier: mergeState.primaryIdentifier,
       deleteIdentifiers,
@@ -325,7 +332,6 @@ function App() {
       emails: [...mergeState.emails],
       accountKey: selectedAccountKeys[0],
       contacts: selectedRows,
-      dryRun,
     });
     alert(resultMessage("merge", result, deleteIdentifiers.length));
     setMergeOpen(false);
@@ -351,7 +357,6 @@ function App() {
       selected: new Set(rows.map((row) => row.id)),
       skipped: allRows.length - rows.length,
       accountLabel: payload.accountOptions?.find((option) => option.key === account)?.name || "All Contacts",
-      dryRun,
     });
   }
 
@@ -375,8 +380,8 @@ function App() {
       alert("Select at least one contact to prune.");
       return;
     }
-    if (!pruneState.dryRun && !confirm(`Prune ${identifiers.length} selected contact(s) with ${pruneState.criterion.label} in ${pruneState.accountLabel}?\n\n${pruneState.criterion.destructiveText}`)) return;
-    const result = await postAction("prune", { identifiers, contacts: rows, dryRun: pruneState.dryRun });
+    if (!confirm(`Prune ${identifiers.length} selected contact(s) with ${pruneState.criterion.label} in ${pruneState.accountLabel}?\n\n${pruneState.criterion.destructiveText}`)) return;
+    const result = await postAction("prune", { identifiers, contacts: rows });
     alert(resultMessage("prune", result, identifiers.length));
     setPruneState(null);
     await load(true);
@@ -405,10 +410,16 @@ function App() {
           <select className="control" value={sortKey} onChange={(event) => { setSortKey(event.target.value); setSortDirection(1); }}>
             {SORT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <button className="icon-button border-blue-700 bg-blue-700 text-white hover:bg-blue-800" type="button" onClick={() => load(true)} disabled={loading}>
-            <RefreshCw size={16} />
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2 border-l border-stone-300 pl-3 max-[900px]:col-span-2 max-[900px]:border-l-0 max-[900px]:pl-0">
+            <span className="text-sm font-medium">Bulk prune</span>
+            <select id="pruneMode" className="control w-40" value={pruneMode} onChange={(event) => setPruneMode(event.target.value)} aria-label="Prune criterion">
+              {PRUNE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <button className="icon-button border-amber-700 bg-amber-700 text-white" type="button" onClick={openPruneModal}>
+              <Scissors size={16} />
+              Prune
+            </button>
+          </div>
         </div>
       </header>
 
@@ -429,27 +440,18 @@ function App() {
           </section>
         )}
 
-        <section className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white px-3 py-2 max-[900px]:items-start">
+        <section className="mb-4 flex items-center justify-between gap-3 border-b border-stone-300 pb-3 max-[900px]:items-start">
           <span className="text-sm font-medium">{fmt(selectedIds.size)} selected</span>
           <div className="flex flex-wrap justify-end gap-2">
-            <label className="inline-flex h-9 items-center gap-2 text-sm text-stone-600">
-              <input checked={dryRun} onChange={(event) => setDryRun(event.target.checked)} type="checkbox" />
-              Dry Run
-            </label>
-            <button className="icon-button border-stone-300 bg-white text-zinc-900" type="button" onClick={clearSelection} disabled={!selectedIds.size}>
-              <X size={16} />
-              Clear Selection
-            </button>
+            {!!selectedIds.size && (
+              <button className="icon-button border-stone-300 bg-white text-zinc-900" type="button" onClick={clearSelection}>
+                <X size={16} />
+                Clear Selection
+              </button>
+            )}
             <button className="icon-button border-blue-700 bg-blue-700 text-white" type="button" onClick={openMergeModal} disabled={!canMerge}>
               <GitMerge size={16} />
               Merge Selected
-            </button>
-            <select id="pruneMode" className="control w-40" value={pruneMode} onChange={(event) => setPruneMode(event.target.value)} aria-label="Prune criterion">
-              {PRUNE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <button className="icon-button border-amber-700 bg-amber-700 text-white" type="button" onClick={openPruneModal}>
-              <Scissors size={16} />
-              Prune
             </button>
             <button className="icon-button border-red-700 bg-red-700 text-white" type="button" onClick={deleteSelectedContacts} disabled={!selectedIds.size || busyAction === "delete"}>
               <Trash2 size={16} />
@@ -458,10 +460,10 @@ function App() {
           </div>
         </section>
 
-        <section className="overflow-auto rounded-lg border border-stone-300 bg-white" style={{ maxHeight: "calc(100vh - 220px)" }}>
-          <table className="min-w-[1120px] w-full border-collapse text-sm">
-            <thead>
-              <tr>
+        <section ref={tableScrollRef} className="overflow-auto rounded-lg border border-stone-300 bg-white" style={{ maxHeight: "calc(100vh - 220px)" }}>
+          <table className="grid min-w-[1120px] w-full text-sm">
+            <thead className="sticky top-0 z-[1] grid">
+              <tr className="grid" style={{ gridTemplateColumns: CONTACT_TABLE_COLUMNS }}>
                 <HeaderCell />
                 <HeaderCell label="Name" onClick={() => toggleSort("name")} />
                 <HeaderCell label="Account" />
@@ -477,33 +479,20 @@ function App() {
                 <HeaderCell label="Shared" numeric />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="relative grid" style={{ height: loading || error ? "auto" : `${rowVirtualizer.getTotalSize()}px` }}>
               {loading && <tr><td className="px-4 py-5 text-stone-500" colSpan={13}>Loading Contacts and Messages metadata...</td></tr>}
               {error && <tr><td className="px-4 py-5 text-red-700" colSpan={13}>{error}</td></tr>}
-              {!loading && !error && visibleRows.map((row, index) => {
-                const [label, badgeClass] = reason(row);
-                const selected = selectedIds.has(row.id);
+              {!loading && !error && rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const row = visibleRows[virtualRow.index];
                 return (
-                  <tr
+                  <ContactTableRow
                     key={row.id}
-                    className={`cursor-pointer select-none border-b border-stone-200 hover:bg-blue-50 ${selected ? "bg-blue-100" : ""}`}
-                    onMouseDown={(event) => { if (event.shiftKey) event.preventDefault(); }}
-                    onClick={(event) => selectRow(row, index, event)}
-                  >
-                    <td className="w-10 px-3 py-2 text-center">{selected ? <CheckSquare size={18} className="text-blue-700" /> : <Square size={18} className="text-stone-400" />}</td>
-                    <td className="max-w-60 overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 font-semibold" title={row.name}>{row.name}</td>
-                    <td className="px-3 py-2 text-left">{row.accountName}</td>
-                    <td className="px-3 py-2 text-left"><span className={`inline-flex h-6 items-center rounded-full px-2 text-xs font-semibold ${badgeClass}`}>{label}</span></td>
-                    <td className="max-w-72 overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-left text-stone-600" title={handleText(row)}>{handleText(row)}</td>
-                    <td className="px-3 py-2 text-right">{row.keepScore}</td>
-                    <td className="px-3 py-2 text-right">{fmt(row.sentTotal)}</td>
-                    <td className="px-3 py-2 text-right">{fmt(row.sentDirect)}</td>
-                    <td className="px-3 py-2 text-right">{fmt(row.sentGroup)}</td>
-                    <td className="px-3 py-2 text-right">{row.daysSinceSent ?? "Never"}</td>
-                    <td className="px-3 py-2 text-left">{row.lastSent || <span className="text-stone-500">Never</span>}</td>
-                    <td className="px-3 py-2 text-right">{fmt(row.receivedFromThemTotal)}</td>
-                    <td className="px-3 py-2 text-right">{fmt(row.sharedTotal)}</td>
-                  </tr>
+                    row={row}
+                    index={virtualRow.index}
+                    selected={selectedIds.has(row.id)}
+                    start={virtualRow.start}
+                    onSelect={selectRow}
+                  />
                 );
               })}
             </tbody>
@@ -538,11 +527,40 @@ function App() {
 function HeaderCell({ label = "", numeric = false, onClick }) {
   return (
     <th
-      className={`sticky top-0 z-[1] border-b border-stone-300 bg-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 ${numeric ? "text-right" : "text-left"} ${onClick ? "cursor-pointer select-none" : ""}`}
+      className={`border-b border-stone-300 bg-stone-200 px-3 py-2 text-xs font-semibold text-stone-700 ${numeric ? "text-right" : "text-left"} ${onClick ? "cursor-pointer select-none" : ""}`}
       onClick={onClick}
     >
       {label}
     </th>
+  );
+}
+
+function ContactTableRow({ row, index, selected, start, onSelect }) {
+  const [label, badgeClass] = reason(row);
+  return (
+    <tr
+      className={`absolute left-0 grid w-full cursor-pointer select-none border-b border-stone-200 hover:bg-blue-50 ${selected ? "bg-blue-100" : ""}`}
+      style={{
+        gridTemplateColumns: CONTACT_TABLE_COLUMNS,
+        transform: `translateY(${start}px)`,
+      }}
+      onMouseDown={(event) => { if (event.shiftKey) event.preventDefault(); }}
+      onClick={(event) => onSelect(row, index, event)}
+    >
+      <td className="w-10 px-3 py-2 text-center">{selected ? <CheckSquare size={18} className="text-blue-700" /> : <Square size={18} className="text-stone-400" />}</td>
+      <td className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 font-semibold" title={row.name}>{row.name}</td>
+      <td className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-left" title={row.accountName}>{row.accountName}</td>
+      <td className="px-3 py-2 text-left"><span className={`inline-flex h-6 items-center rounded-full px-2 text-xs font-semibold ${badgeClass}`}>{label}</span></td>
+      <td className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-left text-stone-600" title={handleText(row)}>{handleText(row)}</td>
+      <td className="px-3 py-2 text-right">{row.keepScore}</td>
+      <td className="px-3 py-2 text-right">{fmt(row.sentTotal)}</td>
+      <td className="px-3 py-2 text-right">{fmt(row.sentDirect)}</td>
+      <td className="px-3 py-2 text-right">{fmt(row.sentGroup)}</td>
+      <td className="px-3 py-2 text-right">{row.daysSinceSent ?? "Never"}</td>
+      <td className="overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2 text-left" title={row.lastSent || "Never"}>{row.lastSent || <span className="text-stone-500">Never</span>}</td>
+      <td className="px-3 py-2 text-right">{fmt(row.receivedFromThemTotal)}</td>
+      <td className="px-3 py-2 text-right">{fmt(row.sharedTotal)}</td>
+    </tr>
   );
 }
 
@@ -675,7 +693,7 @@ function PruneModal({ state, setState, onClose, onPrune, busy }) {
           <button className="icon-button border-stone-300 bg-white text-zinc-900" type="button" onClick={onClose}>Cancel</button>
           <button className="icon-button border-amber-700 bg-amber-700 text-white" type="button" onClick={onPrune} disabled={!selectedCount || busy}>
             <Scissors size={16} />
-            {state.dryRun ? "Dry Run Prune" : "Prune"}
+            Prune
           </button>
         </>
       )}
@@ -685,7 +703,7 @@ function PruneModal({ state, setState, onClose, onPrune, busy }) {
           <strong className="text-zinc-900">{fmt(selectedCount)} of {fmt(state.rows.length)} selected</strong>
           <span>{state.accountLabel}</span>
           <span>{state.criterion.label}</span>
-          <span>{state.dryRun ? "Dry Run: no Contacts data will be changed" : state.criterion.destructiveText}</span>
+          <span>{state.criterion.destructiveText}</span>
           {!!state.skipped && <span>{fmt(state.skipped)} non-deletable row(s) skipped</span>}
           <span className="flex-1" />
           <button className="icon-button h-8 border-stone-300 bg-white text-zinc-900" type="button" onClick={() => setAll(true)}>

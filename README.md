@@ -82,7 +82,7 @@ Contacts deletion/merge uses Contacts.app automation. macOS may ask for permissi
 
 ## Delete, Prune, And Merge Safety
 
-Dry Run is enabled by default. With Dry Run on, delete, prune, and merge requests do not mutate Contacts.
+Delete, prune, and merge actions show a confirmation dialog before mutating Contacts.
 
 Before every delete, prune, or merge request, the server writes a JSON backup of the affected rows to:
 
