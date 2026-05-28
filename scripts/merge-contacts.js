@@ -2,9 +2,10 @@
 
 const fs = require("fs");
 const vCard = require("vcf");
-const yargs = require("yargs");
+const yargs = require("yargs/yargs");
+const { hideBin } = require("yargs/helpers");
 
-const argv = yargs
+const argv = yargs(hideBin(process.argv))
   .usage("$0 contacts1.vcf contacts2.vcf ...")
   .option("output", {
     alias: "o",

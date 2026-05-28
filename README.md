@@ -4,6 +4,12 @@ Utilities for reviewing, pruning, and merging contacts.
 
 ## Install
 
+Use Node 24. The repo includes `.node-version` for `fnm`:
+
+```sh
+fnm use
+```
+
 ```sh
 npm install
 ```
