@@ -275,6 +275,46 @@
       gap: 18px;
       padding: 16px;
     }
+    .modal-panel.wide {
+      width: min(1100px, 100%);
+    }
+    .modal-body.preview {
+      display: block;
+    }
+    .preview-summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 16px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .preview-summary .spacer {
+      flex: 1 1 auto;
+    }
+    .preview-summary button {
+      height: 30px;
+    }
+    .preview-table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      max-height: min(520px, calc(100vh - 260px));
+      overflow: auto;
+    }
+    .preview-table {
+      min-width: 760px;
+    }
+    .preview-table th,
+    .preview-table td {
+      text-align: left;
+    }
+    .preview-table input {
+      height: auto;
+      margin: 0;
+    }
+    .preview-table .numeric {
+      text-align: right;
+    }
     .modal-section h3 {
       margin: 0 0 8px;
       font-size: 13px;
@@ -312,6 +352,11 @@
       background: white;
       border-color: var(--line);
       color: var(--text);
+    }
+    .modal-actions .prune {
+      background: #875c00;
+      border-color: #875c00;
+      color: white;
     }
     @media (max-width: 900px) {
       header { position: static; }
@@ -411,6 +456,19 @@
       </div>
     </div>
   </section>
+  <section id="pruneModal" class="modal" hidden>
+    <div class="modal-panel wide" role="dialog" aria-modal="true" aria-labelledby="pruneTitle">
+      <div class="modal-head">
+        <h2 id="pruneTitle">Prune Preview</h2>
+        <button id="closePrune" class="secondary" type="button">Close</button>
+      </div>
+      <div id="pruneBody" class="modal-body preview"></div>
+      <div class="modal-actions">
+        <button id="cancelPrune" class="secondary" type="button">Cancel</button>
+        <button id="confirmPrune" class="prune" type="button">Prune</button>
+      </div>
+    </div>
+  </section>
   <script>
     const state = {
       contacts: [],
@@ -420,6 +478,7 @@
       lastSelectedIndex: null,
       sortKey: 'candidate',
       sortDirection: 1,
+      pendingPrune: null,
     };
 
     const el = {
@@ -444,6 +503,11 @@
       closeMerge: document.querySelector('#closeMerge'),
       cancelMerge: document.querySelector('#cancelMerge'),
       confirmMerge: document.querySelector('#confirmMerge'),
+      pruneModal: document.querySelector('#pruneModal'),
+      pruneBody: document.querySelector('#pruneBody'),
+      closePrune: document.querySelector('#closePrune'),
+      cancelPrune: document.querySelector('#cancelPrune'),
+      confirmPrune: document.querySelector('#confirmPrune'),
     };
 
     function fmt(value) {
@@ -705,22 +769,110 @@
       });
     }
 
-    async function pruneNoPhoneEmailContacts() {
+    function prunePreviewRow(row) {
+      const rowHandles = [...row.phones, ...row.emails].join(', ') || 'No phone/email';
+      return `
+        <tr>
+          <td><input type="checkbox" data-prune-id="${escapeHtml(row.id)}" checked aria-label="Prune ${escapeHtml(row.name)}"></td>
+          <td class="name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.accountName)}</td>
+          <td class="handles" title="${escapeHtml(rowHandles)}">${escapeHtml(rowHandles)}</td>
+          <td class="numeric">${fmt(row.sentTotal)}</td>
+          <td>${row.lastSent ? escapeHtml(row.lastSent) : '<span class="muted">Never</span>'}</td>
+        </tr>
+      `;
+    }
+
+    function selectedPruneRows() {
+      if (!state.pendingPrune) return [];
+      const checkedIds = new Set([...el.pruneBody.querySelectorAll('input[data-prune-id]:checked')].map(input => input.dataset.pruneId));
+      return state.pendingPrune.rows.filter(row => checkedIds.has(row.id));
+    }
+
+    function updatePruneSelectionCount() {
+      if (!state.pendingPrune) return;
+      const selected = selectedPruneRows().length;
+      const total = state.pendingPrune.rows.length;
+      const count = el.pruneBody.querySelector('#pruneSelectedCount');
+      if (count) count.textContent = `${fmt(selected)} of ${fmt(total)} selected`;
+      el.confirmPrune.disabled = selected === 0;
+    }
+
+    function renderPruneModal() {
       const criterion = pruneCriterion();
-      const rows = pruneCandidates();
-      const identifiers = rows.map(row => row.contactIdentifier).filter(Boolean);
-      if (!identifiers.length) {
+      const allRows = pruneCandidates();
+      const rows = allRows.filter(row => row.contactIdentifier);
+      if (!rows.length) {
         alert(criterion.emptyMessage);
         return;
       }
       const dryRun = el.dryRun.checked;
       const accountLabel = el.account.options[el.account.selectedIndex]?.textContent || 'current account';
-      const actionText = dryRun ? 'Dry run prune' : 'Prune';
-      const consequence = dryRun ? 'No Contacts data will be changed.' : criterion.destructiveText;
-      if (!confirm(`${actionText} ${identifiers.length} contact(s) with ${criterion.label} in ${accountLabel}?\n\n${consequence}`)) {
+      const skipped = allRows.length - rows.length;
+      state.pendingPrune = { criterion, rows, dryRun, accountLabel };
+      el.confirmPrune.textContent = dryRun ? 'Dry Run Prune' : 'Prune';
+      el.pruneBody.innerHTML = `
+        <div class="preview-summary">
+          <strong id="pruneSelectedCount">${fmt(rows.length)} of ${fmt(rows.length)} selected</strong>
+          <span>${escapeHtml(accountLabel)}</span>
+          <span>${escapeHtml(criterion.label)}</span>
+          <span>${dryRun ? 'Dry Run: no Contacts data will be changed' : escapeHtml(criterion.destructiveText)}</span>
+          ${skipped ? `<span>${fmt(skipped)} non-deletable row(s) skipped</span>` : ''}
+          <span class="spacer"></span>
+          <button id="selectAllPrune" class="secondary" type="button">Select All</button>
+          <button id="selectNoPrune" class="secondary" type="button">Select None</button>
+        </div>
+        <div class="preview-table-wrap">
+          <table class="preview-table">
+            <thead>
+              <tr>
+                <th class="select-col"></th>
+                <th>Name</th>
+                <th>Account</th>
+                <th>Handles</th>
+                <th class="numeric">Sent</th>
+                <th>Last sent</th>
+              </tr>
+            </thead>
+            <tbody>${rows.map(prunePreviewRow).join('')}</tbody>
+          </table>
+        </div>
+      `;
+      el.pruneBody.querySelector('#selectAllPrune').addEventListener('click', () => {
+        el.pruneBody.querySelectorAll('input[data-prune-id]').forEach(input => { input.checked = true; });
+        updatePruneSelectionCount();
+      });
+      el.pruneBody.querySelector('#selectNoPrune').addEventListener('click', () => {
+        el.pruneBody.querySelectorAll('input[data-prune-id]').forEach(input => { input.checked = false; });
+        updatePruneSelectionCount();
+      });
+      el.pruneBody.querySelectorAll('input[data-prune-id]').forEach(input => {
+        input.addEventListener('change', updatePruneSelectionCount);
+      });
+      el.pruneModal.hidden = false;
+      updatePruneSelectionCount();
+    }
+
+    function closePruneModal() {
+      el.pruneModal.hidden = true;
+      el.pruneBody.innerHTML = '';
+      state.pendingPrune = null;
+      el.confirmPrune.disabled = false;
+      el.confirmPrune.textContent = 'Prune';
+    }
+
+    async function pruneNoPhoneEmailContacts() {
+      if (!state.pendingPrune) return;
+      const rows = selectedPruneRows();
+      const identifiers = rows.map(row => row.contactIdentifier).filter(Boolean);
+      if (!identifiers.length) {
+        alert('Select at least one contact to prune.');
         return;
       }
+      const { criterion, dryRun, accountLabel } = state.pendingPrune;
+      if (!dryRun && !confirm(`Prune ${identifiers.length} selected contact(s) with ${criterion.label} in ${accountLabel}?\n\n${criterion.destructiveText}`)) return;
       el.pruneNoHandles.disabled = true;
+      el.confirmPrune.disabled = true;
       el.selectionCount.textContent = dryRun ? 'Checking prune...' : 'Pruning...';
       const response = await fetch('/api/prune', {
         method: 'POST',
@@ -735,6 +887,8 @@
       const summary = result.dryRun ? `Dry run: would prune ${result.wouldDelete || 0} contact(s).` : `Pruned ${result.deleted || 0} of ${result.requested || identifiers.length} contact(s).`;
       alert(`${summary}${missing}${stillPresent}${backup}${errors}`);
       el.pruneNoHandles.disabled = false;
+      el.confirmPrune.disabled = false;
+      closePruneModal();
       await load(true);
     }
 
@@ -921,9 +1075,13 @@
       renderRows(state.payload || { summary: window.lastSummary || {} });
     });
     el.mergeSelected.addEventListener('click', renderMergeModal);
-    el.pruneNoHandles.addEventListener('click', () => {
+    el.pruneNoHandles.addEventListener('click', renderPruneModal);
+    el.closePrune.addEventListener('click', closePruneModal);
+    el.cancelPrune.addEventListener('click', closePruneModal);
+    el.confirmPrune.addEventListener('click', () => {
       pruneNoPhoneEmailContacts().catch(error => {
         el.pruneNoHandles.disabled = false;
+        el.confirmPrune.disabled = false;
         alert(error.message);
       });
     });
