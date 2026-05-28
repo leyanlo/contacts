@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import mimetypes
 import sys
 import webbrowser
 from http import HTTPStatus
@@ -16,8 +17,11 @@ import messages_histogram as messages
 from . import actions, store
 
 
+STATIC_DIR = Path(__file__).parent / "static"
+
+
 def index_html() -> str:
-    return (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
+    return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
 class ContactsCleanupHandler(BaseHTTPRequestHandler):
@@ -43,6 +47,15 @@ class ContactsCleanupHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def send_static_file(self, path: Path) -> None:
+        body = path.read_bytes()
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/":
@@ -59,6 +72,15 @@ class ContactsCleanupHandler(BaseHTTPRequestHandler):
                 self.send_json({"warnings": [html.escape(str(exc))], "contacts": [], "summary": {}}, HTTPStatus.INTERNAL_SERVER_ERROR)
                 return
             self.send_json(payload)
+            return
+        static_path = (STATIC_DIR / parsed.path.lstrip("/")).resolve()
+        try:
+            static_path.relative_to(STATIC_DIR.resolve())
+        except ValueError:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if static_path.is_file():
+            self.send_static_file(static_path)
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 

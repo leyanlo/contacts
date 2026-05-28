@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  body {
+    @apply m-0 bg-stone-100 text-zinc-900;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .control {
+    @apply h-9 rounded-md border border-stone-300 bg-white px-3 text-sm text-zinc-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100;
+  }
+
+  .icon-button {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition disabled:cursor-default disabled:border-stone-300 disabled:bg-stone-200 disabled:text-stone-500;
+  }
+
+  .modal-backdrop {
+    @apply fixed inset-0 z-30 flex items-center justify-center bg-zinc-950/40 p-6;
+  }
+
+  .modal-panel {
+    @apply max-h-[calc(100vh-48px)] overflow-auto rounded-lg border border-stone-300 bg-white shadow-2xl;
+  }
+}

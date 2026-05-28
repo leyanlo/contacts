@@ -32,6 +32,12 @@ Use `--output` or `-o` to choose an output file.
 
 ## Local Cleanup App
 
+Build the React/Tailwind frontend:
+
+```sh
+npm run build
+```
+
 Run:
 
 ```sh
@@ -45,6 +51,15 @@ http://127.0.0.1:8765
 ```
 
 The app reads local Contacts and Messages metadata, then ranks cleanup candidates. Message body text is not read.
+
+For frontend development, run the Python API and Vite dev server in separate terminals:
+
+```sh
+python3 contacts_cleanup_app.py --host 127.0.0.1 --port 8765
+npm run frontend:dev
+```
+
+Vite serves the UI at `http://127.0.0.1:5173` and proxies `/api` to the Python server.
 
 Useful filters include:
 
@@ -100,7 +115,9 @@ contacts_app/
   models.py                    # app data models
   server.py                    # local HTTP API/server
   store.py                     # Contacts and Messages readers/ranking
-  static/index.html            # browser UI
+  static/                      # built Vite assets served by Python
+frontend/
+  src/                         # React/Tailwind UI source
 messages_histogram.py          # standalone Messages histogram script
 scripts/
   merge-contacts.js            # VCF concatenation helper
