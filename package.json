@@ -4,7 +4,7 @@
   "description": "Contact utility scripts",
   "main": "index.js",
   "engines": {
-    "node": ">=24.15.0"
+    "node": ">=24.22.1 <25"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.26",
@@ -38,5 +38,8 @@
     "contacts"
   ],
   "author": "Leyan Lo",
-  "license": "ISC"
+  "license": "ISC",
+  "overrides": {
+    "sharp": "0.35.5"
+  }
 }
